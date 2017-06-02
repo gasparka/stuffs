@@ -1,3 +1,5 @@
+from scipy import signal
+
 import numpy as np
 import time
 import sys
@@ -35,7 +37,7 @@ class BladeDriver:
 
         sdr.setGain(SOAPY_SDR_RX, 0, "LNA", 6)
         sdr.setGain(SOAPY_SDR_RX, 0, "VGA1", 30)
-        sdr.setGain(SOAPY_SDR_RX, 0, "VGA2", 0)
+        sdr.setGain(SOAPY_SDR_RX, 0, "VGA2", 30)
         self.sdr = sdr
         self.rxStream = sdr.setupStream(SOAPY_SDR_RX, "CF32", [0])
 
@@ -47,6 +49,11 @@ class BladeDriver:
         print('RX_LNA:', sdr.getGain(SOAPY_SDR_RX, 0, "LNA"))
         print('RX_VGA1:', sdr.getGain(SOAPY_SDR_RX, 0, "VGA1"))
         print('RX_VGA2:', sdr.getGain(SOAPY_SDR_RX, 0, "VGA2"))
+
+
+    def get_total_rx_gain(self):
+        return self.sdr.getGain(SOAPY_SDR_RX, 0, "LNA") + self.sdr.getGain(SOAPY_SDR_RX, 0, "VGA1") + \
+               self.sdr.getGain(SOAPY_SDR_RX, 0, "VGA2")  - 5
 
     def set_frequency(self, frequency):
         self.sdr.setFrequency(SOAPY_SDR_RX, 0, frequency)
@@ -76,3 +83,19 @@ class BladeDriver:
 
         # def __del__(self):
         #     self.sdr.closeStream(self.rxStream)
+
+
+def rssi(x, error=-5.1, gain_compensate=0.0, decimate=32):
+    """
+
+    :param error: default has been measured for BladeRF, full gains, 2M band 2.4G
+    :param gain_compenstate: decreases the RSSI for applied gain in the system
+    :param decimate:  how much to decimate the result
+    """
+
+    dbm = 10 * np.log10(abs(x) ** 2 / 50) + 30  # 50 is ohms
+
+    dbm -= gain_compensate  # compensate for GAINS
+    dbm += error # compensate error
+    dbm = signal.resample_poly(dbm, 1, decimate)
+    return dbm
