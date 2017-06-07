@@ -1,13 +1,17 @@
-from scipy import signal
+import sys
+import time
 
 import numpy as np
-import time
-import sys
+from scipy import signal
 
-#for soapy
+# for soapy
 sys.path.append('/usr/local/lib/python3.5/site-packages')
 import SoapySDR
 from SoapySDR import *
+from numpy import abs
+from numpy import sqrt, sum
+from numpy.random import randn
+
 
 def mixer(signal, lo_freq, fs):
     phase_inc = 2 * np.pi * lo_freq / fs
@@ -50,10 +54,9 @@ class BladeDriver:
         print('RX_VGA1:', sdr.getGain(SOAPY_SDR_RX, 0, "VGA1"))
         print('RX_VGA2:', sdr.getGain(SOAPY_SDR_RX, 0, "VGA2"))
 
-
     def get_total_rx_gain(self):
         return self.sdr.getGain(SOAPY_SDR_RX, 0, "LNA") + self.sdr.getGain(SOAPY_SDR_RX, 0, "VGA1") + \
-               self.sdr.getGain(SOAPY_SDR_RX, 0, "VGA2")  - 5
+               self.sdr.getGain(SOAPY_SDR_RX, 0, "VGA2") - 5
 
     def set_frequency(self, frequency):
         self.sdr.setFrequency(SOAPY_SDR_RX, 0, frequency)
@@ -85,17 +88,46 @@ class BladeDriver:
         #     self.sdr.closeStream(self.rxStream)
 
 
-def rssi(x, error=-5.1, gain_compensate=0.0, decimate=32):
+def iq_to_rssi(x, error=-5.1, gain_compensate=0.0, decimate=32):
     """
 
     :param error: default has been measured for BladeRF, full gains, 2M band 2.4G
-    :param gain_compenstate: decreases the RSSI for applied gain in the system
+    :param gain_compensate: decreases the RSSI for applied gain in the system
     :param decimate:  how much to decimate the result
     """
 
     dbm = 10 * np.log10(abs(x) ** 2 / 50) + 30  # 50 is ohms
 
     dbm -= gain_compensate  # compensate for GAINS
-    dbm += error # compensate error
+    dbm += error  # compensate error
     dbm = signal.resample_poly(dbm, 1, decimate)
     return dbm
+
+
+# this is stolen from some python project
+def awgn(input_signal, snr_dB, rate=1.0):
+    """
+    Addditive White Gaussian Noise (AWGN) Channel.
+    Parameters
+    ----------
+    input_signal : 1D ndarray of floats
+        Input signal to the channel.
+    snr_dB : float
+        Output SNR required in dB.
+    rate : float
+        Rate of the a FEC code used if any, otherwise 1.
+    Returns
+    -------
+    output_signal : 1D ndarray of floats
+        Output signal from the channel with the specified SNR.
+    """
+
+    avg_energy = sum(abs(input_signal) * abs(input_signal)) / len(input_signal)
+    snr_linear = 10 ** (snr_dB / 10.0)
+    noise_variance = avg_energy / (2 * rate * snr_linear)
+
+    noise = (sqrt(noise_variance) * randn(len(input_signal))) + (sqrt(noise_variance) * randn(len(input_signal)) * 1j)
+
+    output_signal = input_signal + noise
+
+    return output_signal
